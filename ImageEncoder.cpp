@@ -97,9 +97,33 @@ std::string ImageEncoder::encodeToPng(IDeckLinkVideoFrame* frame)
 		PNG_FILTER_TYPE_DEFAULT);
 
 
+    IDeckLinkVideoBuffer* videoBuffer;
 	png_byte* frameBytes;
-	frame->GetBytes((void**) &frameBytes);
-	
+
+    HRESULT result = frame->QueryInterface(IID_IDeckLinkVideoBuffer,
+      (void**)&videoBuffer);
+    if (result != S_OK)
+    {
+		std::cerr << "Unable to query the IDeckLinkVideoFrame interface" << std::endl;
+		exit(1);
+    }
+
+    // Prepare the buffer for CPU access
+    result = videoBuffer->StartAccess(bmdBufferAccessWrite);
+    if (result != S_OK)
+    {
+		std::cerr << "Unable to prepare the buffer for CPU access" << std::endl;
+		exit(1);
+    }
+
+    // Access underlying frame buffer address
+    result = videoBuffer->GetBytes((void **)&frameBytes);
+    if (result != S_OK)
+    {
+		std::cerr << "Unable to access the underlying frame buffer address" << std::endl;
+		exit(1);
+    }
+
 	png_bytepp row_pointers = new png_bytep[frame->GetHeight()];
 	for(long row = 0; row < frame->GetHeight(); row++)
 	{
@@ -130,6 +154,12 @@ std::string ImageEncoder::encodeToPng(IDeckLinkVideoFrame* frame)
 	{
 		png_destroy_write_struct(&png_ptr, (png_infopp)NULL);
 	}
+
+    // End the CPU access - the frameBuffer address is no longer guaranteed
+    videoBuffer->EndAccess(bmdBufferAccessWrite);
+
+    // Release buffer
+    videoBuffer->Release();
 
 	delete row_pointers;
 
